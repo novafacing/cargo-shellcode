@@ -6,6 +6,8 @@ The subcommand runs an LLVM pass over your code which inlines all functions into
 and moves all globals into stack space. This allows you to write mostly-normal-looking code which
 can be used as shellcode.
 
+![Example](asset/hello-world.gif)
+
 ## Install
 
 ```sh
@@ -16,8 +18,30 @@ You will need to have LLVM installed (e.g. `dnf install llvm llvm-libs llvm-deve
 
 ## Usage
 
-Just run `cargo-shellcode` in your crate. You'll get a build artifact called `shellcode`, which is
-the self contained static PIC shellcode of your crate.
+To build your crate as shellcode:
+
+```sh
+cargo shellcode build
+```
+
+Optionally, you can specify where to output the shellcode:
+
+```sh
+cargo shellcode build -o shellcode.bin
+```
+
+To run your shellcode (note: this is pretty unsafe!):
+
+```sh
+cargo shellcode run
+```
+
+Or to run a specific shellcode file:
+
+```sh
+cargo shellcode run shellcode.bin
+```
+
 
 ## Crate Layout
 
