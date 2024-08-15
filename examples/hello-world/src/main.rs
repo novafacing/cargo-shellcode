@@ -1,15 +1,10 @@
-#![allow(internal_features)]
-#![feature(lang_items)]
 #![no_std]
 #![no_main]
 
 use core::arch::asm;
 
-#[lang = "eh_personality"]
-fn eh_personality() {}
-
 #[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
+fn panic_handle(_info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
@@ -31,26 +26,8 @@ unsafe fn write(fd: u32, bytes: &[u8]) -> isize {
     ret
 }
 
-unsafe fn exit(code: i32) -> ! {
-    let n: isize = 60;
-    asm! {
-        "syscall",
-        in("rax") n,
-        in("rdi") code,
-        options(nostack, noreturn)
-    }
-}
-
-extern "C" fn main() {
-    const MESSAGE: &str = "Hello, World!\n";
-    unsafe { write(1, MESSAGE.as_bytes()) };
-    // NOTE: Commented out, because this is tested. If you run locally, _start will return but
-    // there will be no return address on the stack, so the program will crash, so you should uncomment this exit
-    //
-    // unsafe { exit(0) };
-}
-
 #[no_mangle]
 pub unsafe extern "C" fn _start() {
-    main()
+    const MESSAGE: &str = "Hello, World!\n";
+    unsafe { write(1, MESSAGE.as_bytes()) };
 }

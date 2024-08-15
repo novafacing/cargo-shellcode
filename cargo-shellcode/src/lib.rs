@@ -1,12 +1,14 @@
 use std::{
     env::var,
     fs::{create_dir_all, read, write},
+    num::NonZero,
     path::PathBuf,
     process::{Command, Stdio},
 };
 
 use cargo_subcommand::{Args, Subcommand};
 use goblin::Object;
+use nix::sys::mman::{mmap_anonymous, MapFlags, ProtFlags};
 
 const LIB_SHELLCODE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/lib/libShellcode.so"));
 
@@ -37,6 +39,12 @@ pub enum Error {
     #[error("Section containing entry or code was not found in build artifact {path}")]
     /// An error raised when the shellcode is not found in the build artifact
     ShellcodeNotFound { path: PathBuf },
+    #[error("Error no {0}")]
+    /// An error raised when the shellcode is not found in the build artifact
+    ErrorNo(#[from] nix::errno::Errno),
+    #[error("Shellcode was empty")]
+    /// An error raised when the shellcode is empty
+    ShellcodeEmpty,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -50,18 +58,42 @@ pub struct Cmd {
 #[derive(clap::Subcommand, Debug, Clone)]
 pub enum ShellcodeCmd {
     /// Build to shellcode
-    Shellcode {
+    Shellcode(ShellcodeCmdInner),
+}
+
+#[derive(clap::Parser, Debug, Clone)]
+pub struct ShellcodeCmdInner {
+    #[clap(subcommand)]
+    pub cmds: ShellcodeCmds,
+}
+
+#[derive(clap::Subcommand, Debug, Clone)]
+pub enum ShellcodeCmds {
+    /// Build crate into shellcode
+    Build {
         #[clap(flatten)]
         args: Args,
+        #[clap(short, long)]
+        /// Optional path to write shellcode to. If not specified, shellcode will be output to the
+        /// target directory as `shellcode.bin`
+        output: Option<PathBuf>,
+    },
+    /// Run shellcode
+    Run {
+        #[clap(short, long)]
+        /// Optional path to the manifest file. If not specified, the default manifest path
+        /// `Cargo.toml` in the current directory will be used.
+        manifest_path: Option<PathBuf>,
+        /// Optional path to shellcode to run. If not specified, the default shellcode output path
+        /// `shellcode.bin` in the `target` directory will be used.
+        shellcode: Option<PathBuf>,
     },
 }
 
 pub struct App;
 
 impl App {
-    pub fn run(cmd: Cmd) -> Result<()> {
-        let ShellcodeCmd::Shellcode { args } = cmd.shellcode;
-
+    fn build_cmd(args: Args, output: Option<PathBuf>) -> Result<()> {
         let subcommand = Subcommand::new(args)?;
 
         if !subcommand.quiet() {
@@ -157,7 +189,7 @@ impl App {
             _ => unimplemented!(),
         };
 
-        let shellcode_path = subcommand.target_dir().join("shellcode.bin");
+        let shellcode_path = output.unwrap_or(subcommand.target_dir().join("shellcode.bin"));
 
         if let Some(shellcode) = shellcode {
             write(&shellcode_path, shellcode)?;
@@ -169,6 +201,70 @@ impl App {
             return Err(Error::ShellcodeNotFound {
                 path: artifact_path,
             });
+        }
+
+        Ok(())
+    }
+
+    pub fn run_cmd(manifest_path: Option<PathBuf>, shellcode: Option<PathBuf>) -> Result<()> {
+        let args = Args {
+            quiet: false,
+            package: vec![],
+            workspace: false,
+            exclude: vec![],
+            lib: false,
+            bin: vec![],
+            bins: false,
+            example: vec![],
+            examples: false,
+            release: false,
+            profile: None,
+            features: vec![],
+            all_features: false,
+            no_default_features: false,
+            target: None,
+            target_dir: None,
+            manifest_path,
+        };
+        let subcommand = Subcommand::new(args)?;
+
+        let shellcode_path = shellcode.unwrap_or(subcommand.target_dir().join("shellcode.bin"));
+
+        let shellcode = read(&shellcode_path)?;
+
+        let mapping = unsafe {
+            mmap_anonymous(
+                None,
+                NonZero::new(shellcode.len()).ok_or(Error::ShellcodeEmpty)?,
+                ProtFlags::PROT_EXEC | ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+                MapFlags::MAP_ANON | MapFlags::MAP_PRIVATE | MapFlags::MAP_EXECUTABLE,
+            )?
+        };
+
+        unsafe {
+            std::ptr::copy(
+                shellcode.as_ptr(),
+                mapping.as_ptr() as *mut u8,
+                shellcode.len(),
+            )
+        };
+
+        let entry = unsafe { std::mem::transmute::<_, fn()>(mapping.as_ptr()) };
+
+        entry();
+
+        Ok(())
+    }
+
+    pub fn run(cmd: Cmd) -> Result<()> {
+        let ShellcodeCmd::Shellcode(ShellcodeCmdInner { cmds }) = cmd.shellcode;
+
+        match cmds {
+            ShellcodeCmds::Build { args, output } => Self::build_cmd(args, output)?,
+            ShellcodeCmds::Run {
+                manifest_path,
+                shellcode,
+            } => Self::run_cmd(manifest_path, shellcode)?,
         }
 
         Ok(())

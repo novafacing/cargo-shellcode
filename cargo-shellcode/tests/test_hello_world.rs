@@ -17,7 +17,12 @@ const CARGO_MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
 
 #[test]
 fn test_hello_world() {
-    let hello_world_path = PathBuf::from(CARGO_MANIFEST_DIR).join("examples/hello-world");
+    let hello_world_path = PathBuf::from(CARGO_MANIFEST_DIR)
+        .parent()
+        .unwrap()
+        .join("examples")
+        .join("hello-world");
+
     let cmd = Cmd {
         shellcode: ShellcodeCmd::Shellcode {
             args: Args {
