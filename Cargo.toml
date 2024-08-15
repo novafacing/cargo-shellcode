@@ -1,7 +1,12 @@
 [package]
 name = "cargo-shellcode"
+description = "Compile a Rust crate into shellcode"
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/novafacing/cargo-shellcode"
+readme = "README.md"
+keywords = ["shellcode", "rust", "cargo", "binary"]
 
 [dependencies]
 cargo-subcommand = "0.12.0"

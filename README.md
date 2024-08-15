@@ -12,6 +12,8 @@ can be used as shellcode.
 cargo install cargo-shellcode
 ```
 
+You will need to have LLVM installed (e.g. `dnf install llvm llvm-libs llvm-devel`).
+
 ## Usage
 
 Just run `cargo-shellcode` in your crate. You'll get a build artifact called `shellcode`, which is
